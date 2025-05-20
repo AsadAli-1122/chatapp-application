@@ -5,37 +5,46 @@ import io from "socket.io-client";
 const SocketContext = createContext();
 
 export const useSocketContext = () => {
-	return useContext(SocketContext);
+  return useContext(SocketContext);
 };
 
 export const SocketContextProvider = ({ children }) => {
-	const [socket, setSocket] = useState(null);
-	const [onlineUsers, setOnlineUsers] = useState([]);
-	const { authUser } = useAuthContext();
+  const [socket, setSocket] = useState(null);
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const { authUser } = useAuthContext();
 
-	useEffect(() => {
-		if (authUser) {
-			const socket = io("https://chatapp-application-api.onrender.com", {
-				query: {
-					userId: authUser._id,
-				},
-			});
+  useEffect(() => {
+    const ENDPOINT = import.meta.env.DEV
+      ? "http://localhost:3030"
+      : "https://chatapp-application-api.onrender.com";
 
-			setSocket(socket);
+    if (!authUser) {
+      socket?.close();
+      setSocket(null);
+      setOnlineUsers([]);
+      return;
+    }
 
-			// socket.on() is used to listen to the events. can be used both on client and server side
-			socket.on("getOnlineUsers", (users) => {
-				setOnlineUsers(users);
-			});
+    const newSocket = io(ENDPOINT, {
+      query: { userId: authUser._id },
+      transports: ["websocket"],
+    });
 
-			return () => socket.close();
-		} else {
-			if (socket) {
-				socket.close();
-				setSocket(null);
-			}
-		}
-	}, [authUser]);
+    newSocket.on("connect", () => {
+      console.log("Socket connected with id:", newSocket.id);
+      console.log("User ID sent:", authUser._id);
+    });
 
-	return <SocketContext.Provider value={{ socket, onlineUsers }}>{children}</SocketContext.Provider>;
+    newSocket.on("getOnlineUsers", setOnlineUsers);
+
+    setSocket(newSocket);
+
+    return () => newSocket.close();
+  }, [authUser]);
+
+  return (
+    <SocketContext.Provider value={{ socket, onlineUsers }}>
+      {children}
+    </SocketContext.Provider>
+  );
 };
